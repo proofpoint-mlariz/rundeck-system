@@ -22,7 +22,7 @@ rerun_options_parse "$@"
 if [[ "-" == "$PROFILE" ]]
 then
 	rerun_log info "Reading profile from stdin"
-	PROFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-quiescent.XXXXXX)
+	PROFILE=$(mktemp -t "profile.stdin.XXXXXX")
 	cat > $PROFILE
 elif [[ ! -f $PROFILE ]]
 then
@@ -32,7 +32,7 @@ fi
 # Generate a file if key=value pairs were given.
 if [[ "$THRESHOLDS" =~ [A-Z_]+=[[:alnum:]]+ ]]
 then
-    TMPFILE=$(mktemp "rundeck-loadbalancer-checks:is-quiescent.XXXXXX")
+    TMPFILE=$(mktemp  -t "thresholds.commandopts.XXXXXX")
 	echo $THRESHOLDS > $TMPFILE
 	THRESHOLDS=$TMPFILE
 	trap 'rm $TMPFILE' EXIT; # cleanup on exit

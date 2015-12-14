@@ -1,11 +1,12 @@
 #!/usr/bin/env roundup
 #
 
-# Helpers
-# -------
-[[ -f "$PROFILE" ]] && . $PROFILE
-[[ -f "$THRESHOLDS" ]] && . $THRESHOLDS
+# Read profile and threshold data
+# -------------------------------
+. $PROFILE
+. $THRESHOLDS
 
+: ${RUNDECK_NODE:?RUNDECK_NODE not set. No profile?}
 
 # The Plan
 # --------
@@ -30,5 +31,5 @@ it_has_passive_executionsMode(){
 it_has_no_running_executions(){
 	running=$STATS_SCHEDULER_RUNNING 
 	threshold=0
-	(( $running == $threshold ))
+	(( "$running" == "$threshold" ))
 }

@@ -6,6 +6,7 @@
 [[ -f "$PROFILE" ]] && . $PROFILE
 [[ -f "$THRESHOLDS" ]] && . $THRESHOLDS
 
+: ${RUNDECK_NODE:?RUNDECK_NODE not set. No profile?}
 
 # The Plan
 # --------

@@ -2,6 +2,8 @@
 
 #/ command: rundeck-loadbalancer-checks:is-available: "the instance is available for traffic"
 #/ usage: rerun rundeck-loadbalancer-checks:is-available  --thresholds <>  --profile <> 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: THRESHOLDS PROFILE
 
 # Load the function library for this module.
 # This loads rerun functions, too.
@@ -11,18 +13,14 @@
 
 # Fail fast
 # ---------
-set -e
-set -o nounset -o pipefail
-
-#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
-#/ option-variables: THRESHOLDS PROFILE
+set -o errexit -o nounset -o pipefail
 
 rerun_options_parse "$@"
 
 if [[ "-" == "$PROFILE" ]]
 then
 	rerun_log info "Reading profile from stdin"
-	PROFILE=$(mktemp "rundeck-loadbalancer-checks:is-available.XXXXXX")
+	PROFILE=$(mktemp -t "profile.stdin.XXXXXX")
 	cat > $PROFILE
 elif [[ ! -f $PROFILE ]]
 then
@@ -33,7 +31,7 @@ fi
 if [[ "$THRESHOLDS" =~ [A-Z_]+=[[:alnum:]]+ ]]
 then
 	rerun_log info "Reading thresholds from command line"
-    TMPFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-available.XXXXXX)
+    TMPFILE=$(mktemp -t "thresholds.commandopts.XXXXXX")
 	echo $THRESHOLDS > $TMPFILE
 	THRESHOLDS=$TMPFILE
 fi

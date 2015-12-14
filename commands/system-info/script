@@ -23,7 +23,7 @@ rundeck_login "$URL" "$USERNAME" "$PASSWORD"
 # Get the resources for the project.
 # ----------------------------------
 APIURL="${URL}/api/14/system/info"
-CURL_OUT=$(mktemp "/tmp/curl.out.XXXXX")
+CURL_OUT=$(mktemp -t "curl.out.XXXXX")
 trap 'rm $CURL_OUT' EXIT; # cleanup on exit
 
 if ! rundeck_curl -o $CURL_OUT -X GET $APIURL
