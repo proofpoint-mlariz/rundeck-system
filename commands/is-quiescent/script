@@ -32,7 +32,7 @@ fi
 # Generate a file if key=value pairs were given.
 if [[ "$THRESHOLDS" =~ [A-Z_]+=[[:alnum:]]+ ]]
 then
-    TMPFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-quiescent.XXXXXX)
+    TMPFILE=$(mktemp "rundeck-loadbalancer-checks:is-quiescent.XXXXXX")
 	echo $THRESHOLDS > $TMPFILE
 	THRESHOLDS=$TMPFILE
 	trap 'rm $TMPFILE' EXIT; # cleanup on exit

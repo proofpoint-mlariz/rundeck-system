@@ -81,7 +81,7 @@ rundeck_login(){
 
     # Submit the username and password to the login form.
 	if ! http_code=$(rundeck_curl -w "%{http_code}"  -d j_username=$user -d j_password=$password \
-		-X POST $loginurl 2>/dev/null -o $curl_out)
+		-X POST $loginurl --max-time 15 2>/dev/null -o $curl_out)
 	then
 		rerun_die 3 "login failure. http_code: $http_code"
 	fi

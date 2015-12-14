@@ -22,7 +22,7 @@ rerun_options_parse "$@"
 if [[ "-" == "$PROFILE" ]]
 then
 	rerun_log info "Reading profile from stdin"
-	PROFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-available.XXXXXX)
+	PROFILE=$(mktemp "rundeck-loadbalancer-checks:is-available.XXXXXX")
 	cat > $PROFILE
 elif [[ ! -f $PROFILE ]]
 then
