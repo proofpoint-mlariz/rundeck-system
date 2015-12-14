@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+#/ command: rundeck-loadbalancer-checks:is-quiescent: "the instance is inactive"
+#/ usage: rerun rundeck-loadbalancer-checks:is-quiescent  --thresholds <>  --profile <> 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: THRESHOLDS PROFILE
+
+# Load the function library for this module.
+# This loads rerun functions, too.
+. $RERUN_MODULE_DIR/lib/functions.sh is-quiescent || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+# Fail fast
+# ---------
+set -o errexit -o nounset -o pipefail
+
+
+rerun_options_parse "$@"
+
+
+if [[ "-" == "$PROFILE" ]]
+then
+	rerun_log info "Reading profile from stdin"
+	PROFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-quiescent.XXXXXX)
+	cat > $PROFILE
+elif [[ ! -f $PROFILE ]]
+then
+	rerun_die "Profile file not found: $PROFILE"
+fi
+
+# Generate a file if key=value pairs were given.
+if [[ "$THRESHOLDS" =~ [A-Z_]+=[[:alnum:]]+ ]]
+then
+    TMPFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-quiescent.XXXXXX)
+	echo $THRESHOLDS > $TMPFILE
+	THRESHOLDS=$TMPFILE
+	trap 'rm $TMPFILE' EXIT; # cleanup on exit
+
+fi
+
+# The roundup tests will source the PROFILE and THRESHOLDS profiles
+cd $RERUN_MODULE_DIR/lib/checks
+./roundup is-quiescent-test.sh
+
+# Done. Exit with last command exit status.
+exit $?
+

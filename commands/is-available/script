@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+#/ command: rundeck-loadbalancer-checks:is-available: "the instance is available for traffic"
+#/ usage: rerun rundeck-loadbalancer-checks:is-available  --thresholds <>  --profile <> 
+
+# Load the function library for this module.
+# This loads rerun functions, too.
+. $RERUN_MODULE_DIR/lib/functions.sh is-available || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+# Fail fast
+# ---------
+set -e
+set -o nounset -o pipefail
+
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: THRESHOLDS PROFILE
+
+rerun_options_parse "$@"
+
+if [[ "-" == "$PROFILE" ]]
+then
+	rerun_log info "Reading profile from stdin"
+	PROFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-available.XXXXXX)
+	cat > $PROFILE
+elif [[ ! -f $PROFILE ]]
+then
+	rerun_die "Profile file not found: $PROFILE"
+fi
+
+# Generate a file if key=value pairs were given.
+if [[ "$THRESHOLDS" =~ [A-Z_]+=[[:alnum:]]+ ]]
+then
+	rerun_log info "Reading thresholds from command line"
+    TMPFILE=$(mktemp $TMPDIR/rundeck-loadbalancer-checks:is-available.XXXXXX)
+	echo $THRESHOLDS > $TMPFILE
+	THRESHOLDS=$TMPFILE
+fi
+
+# The roundup tests will source the PROFILE and THRESHOLDS profiles
+cd $RERUN_MODULE_DIR/lib/checks
+./roundup is-available-test.sh
+
+# Done. Exit with last command exit status.
+exit $?
+

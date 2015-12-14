@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv='content-type' content='text/html;charset=utf-8'>
+    <title>system-info</title>
+    <link rel="stylesheet" media="all" href="http://jashkenas.github.io/docco/resources/linear/public/stylesheets/normalize.css" />
+    <link rel="stylesheet" media="all" href="http://jashkenas.github.io/docco/resources/linear/docco.css" />
+</head>
+<body>
+<div class="container">
+  <div class="page">
+        <div class="header"><h1>system-info</h1></div>
+        <p>Load the function library for this module.
+This loads rerun functions, too.</p>
+
+<div class="highlight"><pre>
+<span class="c">#!/usr/bin/env bash</span>
+
+<span class="c">#/ command: rundeck-loadbalancer-checks:system-info: &quot;get the instance system info&quot;</span>
+<span class="c">#/ usage: rerun rundeck-loadbalancer-checks:system-info  --url &lt;$RUNDECK_URL&gt;  --username &lt;$RUNDECK_USER&gt;  --password &lt;$RUNDECK_PASSWORD&gt; [ --format &lt;profile&gt;]</span>
+
+. <span class="nv">$RERUN_MODULE_DIR</span>/lib/functions.sh system-info <span class="o">||</span> <span class="o">{</span>
+  <span class="nb">echo</span> &gt;&amp;2 <span class="s2">&quot;Failed loading function library.&quot;</span> ; <span class="nb">exit </span>1 ; 
+<span class="o">}</span>
+
+</pre></div>
+
+<p>Error handling</p>
+
+<div class="highlight"><pre>
+<span class="nb">set</span> -o errexit -o nounset -o pipefail
+
+</pre></div>
+
+<h2>Command variables</h2>
+
+<div class="highlight"><pre>
+
+<span class="c">#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR</span>
+<span class="c">#/ option-variables: URL USERNAME PASSWORD FORMAT</span>
+
+rerun_options_parse <span class="s2">&quot;$@&quot;</span>
+
+</pre></div>
+
+<h2>Authenticate.</h2>
+
+<div class="highlight"><pre>
+rundeck_login <span class="s2">&quot;$URL&quot;</span> <span class="s2">&quot;$USERNAME&quot;</span> <span class="s2">&quot;$PASSWORD&quot;</span>
+
+</pre></div>
+
+<h2>Get the resources for the project.</h2>
+
+<div class="highlight"><pre>
+<span class="nv">APIURL</span><span class="o">=</span><span class="s2">&quot;${URL}/api/14/system/info&quot;</span>
+<span class="nv">CURL_OUT</span><span class="o">=</span><span class="k">$(</span>mktemp <span class="s2">&quot;/tmp/curl.out.XXXXX&quot;</span><span class="k">)</span>
+
+<span class="k">if</span> ! rundeck_curl -o <span class="nv">$CURL_OUT</span> -X GET <span class="nv">$APIURL</span>
+<span class="k">then</span>
+<span class="k">    </span>rerun_die 3 <span class="s2">&quot;API error: $APIURL&quot;</span>
+<span class="k">fi</span>    
+
+</pre></div>
+
+<p>Check if the result is an xml file.
+It might be valid xml containing api error information.</p>
+
+<div class="highlight"><pre>
+xmlstarlet val -q <span class="nv">$CURL_OUT</span>
+
+</pre></div>
+
+<p>Fail the command if the api returned an error.</p>
+
+<div class="highlight"><pre>
+
+<span class="k">case</span> <span class="nv">$FORMAT</span> in 
+	xml<span class="o">)</span>
+		cat <span class="nv">$CURL_OUT</span>
+	;;
+	profile<span class="o">)</span>
+		cat <span class="s">&lt;&lt;-EOF</span>
+<span class="s"># DIVIDER</span>
+<span class="s">		TIMESTAMP_EPOCH=$(xmlstarlet sel -t -m &quot;/system/timestamp&quot; -v @epoch -n $CURL_OUT)</span>
+<span class="s">		TIMESTAMP_DATETIME=$(xmlstarlet sel -t -m &quot;/system/timestamp&quot; -v datetime -n $CURL_OUT)</span>
+<span class="s"># DIVIDER</span>
+<span class="s">		RUNDECK_NODE=$(xmlstarlet sel -t -m &quot;/system/rundeck&quot; -v node -n $CURL_OUT)</span>
+<span class="s">		RUNDECK_VERSION=$(xmlstarlet sel -t -m &quot;/system/rundeck&quot; -v version -n $CURL_OUT)</span>
+<span class="s">		RUNDECK_SERVERUUID=$(xmlstarlet sel -t -m &quot;/system/rundeck&quot; -v serverUUID -n $CURL_OUT)</span>
+<span class="s"># DIVIDER</span>
+<span class="s">		EXECUTIONS_MODE_ACTIVE=$(xmlstarlet sel -t -m &quot;/system/executions&quot; -v @active -n $CURL_OUT)</span>
+<span class="s">		EXECUTIONS_EXECUTIONMODE=$(xmlstarlet sel -t -m &quot;/system/executions&quot; -v @executionMode -n $CURL_OUT)</span>
+<span class="s"># DIVIDER</span>
+<span class="s">		STATS_CPU_LOADAVERAGE=$(xmlstarlet sel -t -m &quot;/system/stats/cpu&quot; -v loadAverage -n $CURL_OUT)</span>
+<span class="s">		STATS_CPU_LOADAVERAGE_UNIT=$(xmlstarlet sel -t -m &quot;/system/stats/cpu/loadAverage&quot; -v @unit -n $CURL_OUT)</span>
+<span class="s">		STATS_CPU_CORES=$(xmlstarlet sel -t -m &quot;/system/stats/cpu&quot; -v processors -n $CURL_OUT)</span>
+<span class="s"># DIVIDER</span>
+<span class="s">		STATS_MEM_MAX=$(xmlstarlet sel -t -m &quot;/system/stats/memory&quot; -v max -n $CURL_OUT)</span>
+<span class="s">		STATS_MEM_FREE=$(xmlstarlet sel -t -m &quot;/system/stats/memory&quot; -v free -n $CURL_OUT)</span>
+<span class="s">		STATS_MEM_TOTAL=$(xmlstarlet sel -t -m &quot;/system/stats/memory&quot; -v total -n $CURL_OUT)</span>
+<span class="s"># DIVIDER</span>
+<span class="s">		STATS_SCHEDULER_RUNNING=$(xmlstarlet sel -t -m &quot;/system/stats/scheduler&quot; -v running -n $CURL_OUT)</span>
+<span class="s">		STATS_SCHEDULER_THREADPOOLSIZE=$(xmlstarlet sel -t -m &quot;/system/stats/scheduler&quot; -v threadPoolSize -n $CURL_OUT)</span>
+<span class="s">		EOF</span>
+	;;
+	*<span class="o">)</span> rerun_die <span class="s2">&quot;Unknown format: $FORMAT&quot;</span>
+	;;
+<span class="k">esac</span>
+
+
+
+</pre></div>
+
+<p>System info timestamp</p>
+
+<div class="highlight"><pre>
+rm <span class="nv">$CURL_OUT</span>
+
+<span class="nb">exit</span> <span class="nv">$?</span>
+
+
+
+<div class="highlight"><pre>
+</pre></div>
+
+<p>Rundeck info.</p>
+
+<div class="highlight"><pre>
+
+</pre></div>
+
+<p>Execution status and mode.</p>
+
+</pre></div>
+
+<p>CPU statistics.</p>
+
+</pre></div>
+
+<p>Memory statistics.</p>
+
+</pre></div>
+
+<p>Scheduler statistics.</p>
+
+</pre></div>
+
+<p>Done. Exit with last command exit status.</p>
+
+</pre></div>
+
+</pre></div>
+</pre></div>
+  </div>
+  <div class="fleur">h</div>
+
+</div>
+</body>
+</html>

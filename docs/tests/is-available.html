@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv='content-type' content='text/html;charset=utf-8'>
+    <title>is-available</title>
+    <link rel="stylesheet" media="all" href="http://jashkenas.github.io/docco/resources/linear/public/stylesheets/normalize.css" />
+    <link rel="stylesheet" media="all" href="http://jashkenas.github.io/docco/resources/linear/docco.css" />
+</head>
+<body>
+<div class="container">
+  <div class="page">
+        <div class="header"><h1>is-available</h1></div>
+        </pre></div>
+
+<h2>Helpers</h2>
+
+<div class="highlight"><pre>
+<span class="c">#!/usr/bin/env roundup</span>
+
+</pre></div>
+
+<h2>The Plan</h2>
+
+<div class="highlight"><pre>
+<span class="o">[[</span> -f <span class="s2">&quot;$PROFILE&quot;</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> . <span class="nv">$PROFILE</span>
+<span class="o">[[</span> -f <span class="s2">&quot;$THRESHOLDS&quot;</span> <span class="o">]]</span> <span class="o">&amp;&amp;</span> . <span class="nv">$THRESHOLDS</span>
+
+
+</pre></div>
+
+<h2>The Tests</h2>
+
+<div class="highlight"><pre>
+
+describe <span class="s2">&quot;Check if &#39;$RUNDECK_NODE&#39; instance is ready to be put into rotation&quot;</span>
+
+</pre></div>
+
+<p>CPU statistics.</p>
+
+<div class="highlight"><pre>
+
+it_has_active_executionsMode<span class="o">(){</span>
+   <span class="o">[[</span> <span class="s2">&quot;active&quot;</span> <span class="o">==</span> <span class="s2">&quot;$EXECUTIONS_EXECUTIONMODE&quot;</span> <span class="o">]]</span>
+<span class="o">}</span>
+
+</pre></div>
+
+<p>Memory statistics.</p>
+
+<div class="highlight"><pre>
+<span class="c">#STATS_CPU_LOADAVERAGE=2.162109375</span>
+<span class="c">#STATS_CPU_LOADAVERAGE_UNIT=percent</span>
+<span class="c">#STATS_CPU_CORES=8</span>
+
+it_is_below_max_cpu_loadAverage<span class="o">()</span> <span class="o">{</span>
+	<span class="nv">current_loadAverage</span><span class="o">=</span><span class="k">$(</span><span class="nb">printf</span> <span class="s2">&quot;%.0f\n&quot;</span> <span class="s2">&quot;$STATS_CPU_LOADAVERAGE&quot;</span><span class="k">)</span> 
+	<span class="nv">threshold</span><span class="o">=</span><span class="k">${</span><span class="nv">THRESHOLDS_CPU_LOADAVERAGE</span><span class="p">:=100</span><span class="k">}</span>
+	<span class="o">((</span> <span class="nv">$current_loadAverage</span> &lt; <span class="nv">$threshold</span> <span class="o">))</span>
+<span class="o">}</span>
+</pre></div>
+
+<p>Scheduler statistics.</p>
+
+<div class="highlight"><pre>
+<span class="c">#STATS_MEM_MAX=954728448</span>
+<span class="c">#STATS_MEM_FREE=435339792</span>
+<span class="c">#STATS_MEM_TOTAL=727711744</span>
+
+it_has_memory_available<span class="o">(){</span>
+	<span class="nv">mem_free</span><span class="o">=</span><span class="nv">$STATS_MEM_FREE</span> <span class="nv">mem_max</span><span class="o">=</span><span class="nv">$STATS_MEM_MAX</span> 
+	<span class="nv">threshold</span><span class="o">=</span><span class="k">${</span><span class="nv">THRESHOLDS_MEM_FREE_PCT</span><span class="p">:=90</span><span class="k">}</span>
+	<span class="nv">pct_available</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span> <span class="s2">&quot;scale=0; $mem_free*100/$mem_max&quot;</span>|bc<span class="k">)</span>
+	<span class="o">((</span> <span class="nv">$pct_available</span> &lt; <span class="nv">$threshold</span> <span class="o">))</span>
+<span class="o">}</span>
+</pre></div>
+
+</pre></div>
+<div class="highlight"><pre>
+<span class="c">#STATS_SCHEDULER_RUNNING=0</span>
+<span class="c">#STATS_SCHEDULER_THREADPOOLSIZE=10</span>
+<span class="c">#STATS_THREADS_ACTIVE=29</span>
+
+it_has_scheduler_threads_available<span class="o">(){</span>
+	<span class="nv">running</span><span class="o">=</span><span class="nv">$STATS_SCHEDULER_RUNNING</span> <span class="nv">threadpoolsize</span><span class="o">=</span><span class="nv">$STATS_SCHEDULER_THREADPOOLSIZE</span> 
+	<span class="nv">threshold</span><span class="o">=</span><span class="k">${</span><span class="nv">THRESHOLDS_THREADS_FREE</span><span class="p">:=90</span><span class="k">}</span>
+	<span class="nv">pct_used</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span> <span class="s2">&quot;scale=0; $running*100/$threadpoolsize&quot;</span>|bc<span class="k">)</span>
+	<span class="o">((</span> <span class="nv">$pct_used</span> &lt; <span class="nv">$threshold</span> <span class="o">))</span>
+<span class="o">}</span>
+
+
+<div class="highlight"><pre>
+</pre></div>
+<div class="highlight"><pre>
+  </div>
+  <div class="fleur">h</div>
+
+</div>
+</body>
+</html>

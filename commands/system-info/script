@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+#/ command: rundeck-loadbalancer-checks:system-info: "get the instance system info"
+#/ usage: rerun rundeck-loadbalancer-checks:system-info  --url <$RUNDECK_URL>  --username <$RUNDECK_USER>  --password <$RUNDECK_PASSWORD> [ --format <profile>] 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: URL USERNAME PASSWORD FORMAT
+
+# Load the function library for this module.
+# This loads rerun functions, too.
+. $RERUN_MODULE_DIR/lib/functions.sh system-info || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+# Error handling
+set -o errexit -o nounset -o pipefail
+
+rerun_options_parse "$@"
+
+# Authenticate.
+# --------------
+rundeck_login "$URL" "$USERNAME" "$PASSWORD"
+
+# Get the resources for the project.
+# ----------------------------------
+APIURL="${URL}/api/14/system/info"
+CURL_OUT=$(mktemp "/tmp/curl.out.XXXXX")
+trap 'rm $CURL_OUT' EXIT; # cleanup on exit
+
+if ! rundeck_curl -o $CURL_OUT -X GET $APIURL
+then
+    rerun_die 3 "API error: $APIURL"
+fi    
+
+# Check if the result is an xml file.
+# It might be valid xml containing api error information.
+xmlstarlet val -q $CURL_OUT
+
+# Fail the command if the api returned an error.
+
+case $FORMAT in 
+	xml)
+		cat $CURL_OUT
+	;;
+	profile)
+		cat <<-EOF
+		#
+		# System info timestamp
+		#
+		TIMESTAMP_EPOCH=$(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT)
+		TIMESTAMP_DATETIME=$(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT)
+		#
+		# Rundeck info.
+		#
+		RUNDECK_NODE=$(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT)
+		RUNDECK_VERSION=$(xmlstarlet sel -t -m "/system/rundeck" -v version -n $CURL_OUT)
+		RUNDECK_SERVERUUID=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
+		#
+		# Execution status and mode.
+		#
+		EXECUTIONS_MODE_ACTIVE=$(xmlstarlet sel -t -m "/system/executions" -v @active -n $CURL_OUT)
+		EXECUTIONS_EXECUTIONMODE=$(xmlstarlet sel -t -m "/system/executions" -v @executionMode -n $CURL_OUT)
+		#
+		# CPU statistics.
+		#
+		STATS_CPU_LOADAVERAGE=$(xmlstarlet sel -t -m "/system/stats/cpu" -v loadAverage -n $CURL_OUT)
+		STATS_CPU_LOADAVERAGE_UNIT=$(xmlstarlet sel -t -m "/system/stats/cpu/loadAverage" -v @unit -n $CURL_OUT)
+		STATS_CPU_CORES=$(xmlstarlet sel -t -m "/system/stats/cpu" -v processors -n $CURL_OUT)
+		#
+		# Memory statistics.
+		#
+		STATS_MEM_MAX=$(xmlstarlet sel -t -m "/system/stats/memory" -v max -n $CURL_OUT)
+		STATS_MEM_FREE=$(xmlstarlet sel -t -m "/system/stats/memory" -v free -n $CURL_OUT)
+		STATS_MEM_TOTAL=$(xmlstarlet sel -t -m "/system/stats/memory" -v total -n $CURL_OUT)
+		#
+		# Scheduler statistics.
+		#
+		STATS_SCHEDULER_RUNNING=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v running -n $CURL_OUT)
+		STATS_SCHEDULER_THREADPOOLSIZE=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT)
+		EOF
+	;;
+	*) rerun_die "Unknown format: $FORMAT"
+	;;
+esac
+
+
+
+# Done. Exit with last command exit status.
+exit $?
+
