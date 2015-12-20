@@ -1,4 +1,4 @@
-The *system-info* command uses the /api/system/info API to get the instance's system info. Output can be returned in two formats: xml, or profile (default)
+The *info* command uses the /api/system/info API to get the instance's system info. Output can be returned in two formats: xml, or profile (default)
 
 To access the rundeck server, you can set environment variables rather than set command line options to specify --url, --user, --password.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-#/ command: rundeck-loadbalancer-checks:is-quiescent: "the instance is inactive"
-#/ usage: rerun rundeck-loadbalancer-checks:is-quiescent  --thresholds <>  --profile <> 
+#/ command: rundeck-system:is-quiescent: "the instance is inactive"
+#/ usage: rerun rundeck-system:is-quiescent  --thresholds <>  --profile <> 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
 #/ option-variables: THRESHOLDS PROFILE
 

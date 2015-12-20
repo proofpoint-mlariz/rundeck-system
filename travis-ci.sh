@@ -5,7 +5,7 @@ set -eu
 
 
 # The module we're building.
-MODULE=rundeck-loadbalancer-checks
+MODULE=rundeck-system
 # The bintray info.
 BINTRAY_USER=ahonor BINTRAY_ORG=rerun 
 

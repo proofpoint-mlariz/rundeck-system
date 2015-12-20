@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-#/ command: rundeck-loadbalancer-checks:system-info: "get the instance system info"
-#/ usage: rerun rundeck-loadbalancer-checks:system-info  --url <$RUNDECK_URL>  --username <$RUNDECK_USER>  --password <$RUNDECK_PASSWORD> [ --format <profile>] 
+#/ command: rundeck-system:info: "get the instance system info"
+#/ usage: rerun rundeck-system:info  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --format <profile>] [ --apikey <$RUNDECK_APIKEY>] 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
-#/ option-variables: URL USERNAME PASSWORD FORMAT
+#/ option-variables: URL USERNAME PASSWORD FORMAT APIKEY
 
 # Load the function library for this module.
 # This loads rerun functions, too.
-. $RERUN_MODULE_DIR/lib/functions.sh system-info || { 
+. $RERUN_MODULE_DIR/lib/functions.sh info || { 
   echo >&2 "Failed loading function library." ; exit 1 ; 
 }
 
@@ -16,20 +16,25 @@ set -o errexit -o nounset -o pipefail
 
 rerun_options_parse "$@"
 
-# Authenticate.
-# --------------
-rundeck_login "$URL" "$USERNAME" "$PASSWORD"
 
-# Get the resources for the project.
-# ----------------------------------
 APIURL="${URL}/api/14/system/info"
 CURL_OUT=$(mktemp -t "curl.out.XXXXX")
 trap 'rm $CURL_OUT' EXIT; # cleanup on exit
 
-if ! rundeck_curl -o $CURL_OUT -X GET $APIURL
+
+rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
+
+if ! http_code=$(rundeck_curl -w "%{http_code}" -H Accept:application/xml \
+	-X GET "${APIURL}" -o $CURL_OUT)
 then
-    rerun_die 3 "API error: $APIURL"
-fi    
+	rerun_die 3 "curl request failed (exit code: $?)"
+fi
+
+case ${http_code:-} in
+   	20*) : ;; # successful 
+   	40*) rerun_die "$(xmlstarlet sel -t -m //error -v message $CURL_OUT)" ;;
+	* )  rerun_die 3 "API error ${http_code:-}: POST ${APIURL}" ;;
+esac 
 
 # Check if the result is an xml file.
 # It might be valid xml containing api error information.
@@ -39,7 +44,7 @@ xmlstarlet val -q $CURL_OUT
 
 case $FORMAT in 
 	xml)
-		cat $CURL_OUT
+		xmlstarlet fo $CURL_OUT
 	;;
 	profile)
 		cat <<-EOF

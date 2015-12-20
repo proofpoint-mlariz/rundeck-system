@@ -38,6 +38,6 @@ case "$1" in
 esac
 
 # launch it!
-exec $PAYLOAD/rerun/rerun ${rerun_opts[*]:-} rundeck-loadbalancer-checks: "$@"
+exec $PAYLOAD/rerun/rerun ${rerun_opts[*]:-} rundeck-system: "$@"
 
 # Done

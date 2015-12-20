@@ -24,11 +24,9 @@ fi
 # Your functions declared here.
 # - - -
 
-# Where to store the login cookies
-COOKIES=$(mktemp "/tmp/cookies.XXXXX")
-# Curl opts to accept insecure certs, use a cookie jar, follow redirects, show only errors, fail fast.
-CURLOPTS="-k -f -s -S -L -c $COOKIES -b $COOKIES"
 
+# Curl opts to accept insecure certs, follow redirects, show only errors
+CURLOPTS="-k -s -S -L"
 
 #
 # _rundeck_curl_ - The curl wrapper function
@@ -41,7 +39,7 @@ CURLOPTS="-k -f -s -S -L -c $COOKIES -b $COOKIES"
 #
 # Notes: 
 rundeck_curl() {
-	command curl --user-agent "rerun/$RERUN_VERSION rundeck-admin/${RERUN_MODULE_VERSION:-}" $CURLOPTS "$@"
+	command curl --user-agent "rerun/$RERUN_VERSION $(basename ${RERUN_MODULE_DIR})/${RERUN_MODULE_VERSION:-}" $CURLOPTS "$@"
 }
 
 #
@@ -49,9 +47,9 @@ rundeck_curl() {
 #
 
 #
-# _rundeck_login_ - Login to rundeck
+# _rundeck_login_ - Login to rundeck and get a session
 #
-#     rundeck_login url user password
+#     rundeck_login_session url user password
 #
 # Arguments:
 #
@@ -59,33 +57,38 @@ rundeck_curl() {
 # * user:     The login user name.
 # * password: The password for login.
 #
-# Notes:      None
-
-rundeck_login(){
-	[[ $# -ne 3 ]] && {
+# Notes: 
+rundeck_login_session(){
+	(( $# != 3 )) && {
 		rerun_die 2 "usage: rundeck_login: url user password"
 	}
 	local -r url=$1 user=$2 password=$3
+
+	# Where to store the login cookies
+	local COOKIES=$(mktemp -t "cookies.XXXXX")
 
 	local http_code errors
 	local -r loginurl="${url}/j_security_check"
 
 	# Request the login form.
-	if ! http_code=$(rundeck_curl  -w "%{http_code}" $url 2> /dev/null)
+	if ! http_code=$(rundeck_curl -c $COOKIES -b $COOKIES --fail -w "%{http_code}" $url 2>/dev/null >/dev/null)
 	then
-		rerun_die 3 "login failure. http_code: $http_code"
+		rerun_die 3 "curl request failed to $url (exit code: $?)"
     fi
 
     # Temporary file to store results.
-    local -r curl_out=$(mktemp "/tmp/login.XXXXX")
+    local -r curl_out=$(mktemp -t "login.XXXXX")
 
     # Submit the username and password to the login form.
-	if ! http_code=$(rundeck_curl -w "%{http_code}"  -d j_username=$user -d j_password=$password \
-		-X POST $loginurl --max-time 15 2>/dev/null -o $curl_out)
+	if ! http_code=$(rundeck_curl  -c $COOKIES -b $COOKIES -w "%{http_code}"  -d j_username=$user -d j_password=$password \
+		-X POST $loginurl 2>/dev/null -o $curl_out)
 	then
-		rerun_die 3 "login failure. http_code: $http_code"
+		rerun_die 3 "curl request failed to $loginurl (exit code: $?)"
 	fi
-
+	case ${http_code:-} in
+   		200) : ;; # successful
+		* ) rerun_die 3 "login failure (http_code: '$http_code'): ${url}" ;;
+	esac
 	# Parse the login result page. It might contain an error.
 	# Convert the result into well formed xhtml so we can query it.
 	if ! errors=$(xmlstarlet fo -R -H $curl_out 2>/dev/null |
@@ -102,6 +105,34 @@ rundeck_login(){
 		rerun_die 3 "Login failure. error: $errors"
 	}
 
+	echo $COOKIES
 	return 0
+}
+
+#
+# - - -
+#
+
+rundeck_authenticate() {
+	OPTIND=1
+	local url username password apikey cookies
+	while getopts "u:U:p:k:" opt; do
+		case "$opt" in
+			u) url=$OPTARG ;;
+			U) username=$OPTARG ;;
+			p) password=$OPTARG ;;
+			k) apikey=$OPTARG ;;
+		esac
+	done
+
+	if [[ -n "${password:-}" && -n "${username:-}" ]]
+	then
+		COOKIES=$(rundeck_login_session "$URL" "$username" "$password")
+		CURLOPTS="$CURLOPTS -c $COOKIES -b $COOKIES"
+	elif [[ -z "${password:-}" && -n "${apikey:-}" ]]; then
+		CURLOPTS="$CURLOPTS -H X-Rundeck-Auth-Token:$apikey"
+	else
+		rerun_die 2 "Either use --username <> --password <> ...or... --apikey <>"
+	fi
 }
 

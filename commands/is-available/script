@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-#/ command: rundeck-loadbalancer-checks:is-available: "the instance is available for traffic"
-#/ usage: rerun rundeck-loadbalancer-checks:is-available  --thresholds <>  --profile <> 
+#/ command: rundeck-system:is-available: "the instance is available for traffic"
+#/ usage: rerun rundeck-system:is-available  --thresholds <>  --profile <> 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
 #/ option-variables: THRESHOLDS PROFILE
 
@@ -32,7 +32,7 @@ if [[ "$THRESHOLDS" =~ [A-Z_]+=[[:alnum:]]+ ]]
 then
 	rerun_log info "Reading thresholds from command line"
     TMPFILE=$(mktemp -t "thresholds.commandopts.XXXXXX")
-	echo $THRESHOLDS > $TMPFILE
+	echo "$THRESHOLDS" > $TMPFILE
 	THRESHOLDS=$TMPFILE
 fi
 
