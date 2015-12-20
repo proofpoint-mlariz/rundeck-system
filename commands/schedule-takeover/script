@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+#/ command: rundeck-system:schedule-takeover: "Claim all scheduled jobs from another instance"
+#/ usage: rerun rundeck-system:schedule-takeover  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --apikey <$RUNDECK_APIKEY>] [ --uuid <>] [ --project <>] 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: URL USERNAME PASSWORD APIKEY UUID PROJECT
+
+. $RERUN_MODULE_DIR/lib/functions.sh schedule-takeover || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+set -o errexit -o nounset -o pipefail
+
+rerun_options_parse "$@"
+
+CURL_OUT=$(mktemp -t "curl.out.XXXXX")
+PUT_CONTENT=$(mktemp -t "put.content.XXXXX")
+trap 'rm $CURL_OUT $PUT_CONTENT' EXIT; # cleanup on exit
+
+cat > $PUT_CONTENT <<EOF
+<takeoverSchedule>
+$(if [[ ${UUID} == all ]]
+  then
+	echo "  <server all=\"true\"/>"
+  else
+  	echo "  <server uuid=\"$UUID\"/>"
+fi)
+$([[ -n "$PROJECT" ]] && echo "  <project name=\"$PROJECT\"/>")
+</takeoverSchedule>
+EOF
+
+
+APIURL="${URL}/api/14/scheduler/takeover"
+
+rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
+
+if ! http_code=$(rundeck_curl -w "%{http_code}" \
+	-H Accept:application/xml -H Content-Type:application/xml  \
+	--data-binary @$PUT_CONTENT \
+	-X PUT "${APIURL}" -o $CURL_OUT)
+then
+	rerun_die 3 "curl request failed (exit code: $?)"
+fi
+
+case ${http_code:-} in
+   	20*) : ;; # successful 
+   	40*) rerun_die "$(xmlstarlet sel -t -m //error -v message $CURL_OUT)" ;;
+	* )  rerun_die 3 "API error ${http_code:-}: PUT ${APIURL}" ;;
+esac 
+
+
+# Success/failure counters about schedule takeovers.
+declare -i successful failed total
+total=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs" -v @total $CURL_OUT)
+successful=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/successful" -v @count $CURL_OUT)
+failed=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed" -v @count $CURL_OUT)
+
+# Print out the job IDs for the successfully taken over.
+if (( "$successful" > 0 ))
+then
+	rerun_log info "successful: $successful "
+    xmlstarlet sel -t -m "/takeoverSchedule/jobs/successful/job" -o " - " -v @permalink -n $CURL_OUT
+fi
+
+# Bail out but print the job IDs for the failed ones.
+if (( "$failed" > 0 ))
+then
+	rerun_log warn "failed: $failed"
+    failed_ids=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed/job" -o " - " -v @permalink -n $CURL_OUT)
+    rerun_die 4 "Not all jobs taken over: $failed out of $total. jobs: $failed_ids"
+fi
+
+# Done. Exit with last command exit status.
+exit $?
+
