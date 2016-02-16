@@ -83,6 +83,40 @@ case $FORMAT in
 		STATS_SCHEDULER_THREADPOOLSIZE=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT)
 		EOF
 	;;
+	resourcexml)
+		to_nodeattribute() {
+			local -r name=$1 value=${2:-}
+			printf -- "<attribute name=\"%s%s\" value=\"%s\"/>\n" "${PREFIX:-}" "$name" "$value"
+		}
+		server_uuid=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
+
+		cat <<-EOF
+		<project>
+		  <node name="$server_uuid" tags='cluster'>
+		$(to_nodeattribute "timstamp-epoch" $(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT))
+		$(to_nodeattribute "timestamp-datetime" $(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT))
+
+		$(to_nodeattribute "rundeck-node" $(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT))
+		$(to_nodeattribute "rundeck-version" $(xmlstarlet sel -t -m "/system/rundeck" -v version -n $CURL_OUT))
+		$(to_nodeattribute "rundeck-serveruuid" ${server_uuid})
+
+		$(to_nodeattribute "executions-mode-active" $(xmlstarlet sel -t -m "/system/executions" -v @active -n $CURL_OUT))
+		$(to_nodeattribute "executions-mode" $(xmlstarlet sel -t -m "/system/executions" -v @executionMode -n $CURL_OUT))
+
+		$(to_nodeattribute "cpu-loadaverage" $(xmlstarlet sel -t -m "/system/stats/cpu" -v loadAverage -n $CURL_OUT))
+		$(to_nodeattribute "cpu-loadaverage-unit" $(xmlstarlet sel -t -m "/system/stats/cpu/loadAverage" -v @unit -n $CURL_OUT))
+		$(to_nodeattribute "cpu-cores" $(xmlstarlet sel -t -m "/system/stats/cpu" -v processors -n $CURL_OUT))
+
+		$(to_nodeattribute "mem-max" $(xmlstarlet sel -t -m "/system/stats/memory" -v max -n $CURL_OUT))
+		$(to_nodeattribute "mem-free" $(xmlstarlet sel -t -m "/system/stats/memory" -v free -n $CURL_OUT))
+		$(to_nodeattribute "mem-total" $(xmlstarlet sel -t -m "/system/stats/memory" -v total -n $CURL_OUT))
+
+		$(to_nodeattribute "scheduler-running" $(xmlstarlet sel -t -m "/system/stats/scheduler" -v running -n $CURL_OUT))
+		$(to_nodeattribute "scheduler-threadpool-size" $(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT))
+		</node>
+		</project>
+		EOF
+	;;	
 	*) rerun_die "Unknown format: $FORMAT"
 	;;
 esac
