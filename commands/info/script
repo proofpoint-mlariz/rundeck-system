@@ -93,7 +93,7 @@ case $FORMAT in
 		cat <<-EOF
 		<project>
 		  <node name="$server_uuid" tags='cluster'>
-		$(to_nodeattribute "timstamp-epoch" $(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT))
+		$(to_nodeattribute "timestamp-epoch" $(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT))
 		$(to_nodeattribute "timestamp-datetime" $(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT))
 
 		$(to_nodeattribute "rundeck-node" $(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT))
