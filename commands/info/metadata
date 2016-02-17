@@ -3,4 +3,4 @@
 # Wed Dec  9 09:31:21 PST 2015
 NAME=info
 DESCRIPTION="get the instance system info"
-OPTIONS="format url username password apikey"
+OPTIONS="format file url username password apikey"

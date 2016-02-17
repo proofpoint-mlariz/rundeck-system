@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #/ command: rundeck-system:info: "get the instance system info"
-#/ usage: rerun rundeck-system:info  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --format <profile>] [ --apikey <$RUNDECK_APIKEY>] 
+#/ usage: rerun rundeck-system:info [ --format <profile>]  --url <${RUNDECK_URL:-}> [ --username <${RUNDECK_USER:-}>] [ --password <${RUNDECK_PASSWORD:-}>] [ --apikey <${RUNDECK_APIKEY:-}>] [ --file <>] 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
-#/ option-variables: URL USERNAME PASSWORD FORMAT APIKEY
+#/ option-variables: FORMAT URL USERNAME PASSWORD APIKEY FILE
 
 # Load the function library for this module.
 # This loads rerun functions, too.
@@ -42,12 +42,13 @@ xmlstarlet val -q $CURL_OUT
 
 # Fail the command if the api returned an error.
 
+result=$(mktemp -t "info.out.XXXXX")
 case $FORMAT in 
 	xml)
-		xmlstarlet fo $CURL_OUT
+		xmlstarlet fo $CURL_OUT > $result
 	;;
 	profile)
-		cat <<-EOF
+		cat >$result<<-EOF
 		#
 		# System info timestamp
 		#
@@ -90,7 +91,7 @@ case $FORMAT in
 		}
 		server_uuid=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
 
-		cat <<-EOF
+		cat >$result<<-EOF
 		<project>
 		  <node name="$server_uuid" tags='cluster'>
 		$(to_nodeattribute "timestamp-epoch" $(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT))
@@ -121,7 +122,15 @@ case $FORMAT in
 	;;
 esac
 
+if [[ -n "$FILE" ]]
+then
+	[[ ! -d $(dirname "$FILE") ]] && mkdir -p $(dirname "$FILE")
 
+	cp $result "$FILE"
+else
+	cat $result
+fi
+rm -f $result
 
 # Done. Exit with last command exit status.
 exit $?
