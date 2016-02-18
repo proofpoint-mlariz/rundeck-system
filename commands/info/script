@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #/ command: rundeck-system:info: "get the instance system info"
-#/ usage: rerun rundeck-system:info [ --format <profile>]  --url <${RUNDECK_URL:-}> [ --username <${RUNDECK_USER:-}>] [ --password <${RUNDECK_PASSWORD:-}>] [ --apikey <${RUNDECK_APIKEY:-}>] [ --file <>] 
+#/ usage: rerun rundeck-system:info [ --format <profile>] [ --file <>]  --url <${RUNDECK_URL:-}> [ --username <${RUNDECK_USER:-}>] [ --password <${RUNDECK_PASSWORD:-}>] [ --apikey <${RUNDECK_APIKEY:-}>] [ --pretty-print <false>] 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
-#/ option-variables: FORMAT URL USERNAME PASSWORD APIKEY FILE
+#/ option-variables: FORMAT FILE URL USERNAME PASSWORD APIKEY PRETTY_PRINT
 
 # Load the function library for this module.
 # This loads rerun functions, too.
@@ -11,24 +11,107 @@
   echo >&2 "Failed loading function library." ; exit 1 ; 
 }
 
-# Error handling
+# Fail for a command error or unset variable.
 set -o errexit -o nounset -o pipefail
 
+# Read the command options.
 rerun_options_parse "$@"
 
-
+# Configure API address and output file
 APIURL="${URL}/api/14/system/info"
 CURL_OUT=$(mktemp -t "curl.out.XXXXX")
-trap 'rm $CURL_OUT' EXIT; # cleanup on exit
+
+# Configure file for generated results.
+result=$(mktemp -t "info.out.XXXXX")
+
+# Cleanup tempfiles on exit
+#trap 'rm $CURL_OUT $result' EXIT; 
 
 
+# Function to generate profile format.
+generate_profile() {
+	cat <<-EOF
+	#
+	# System info timestamp
+	#
+	TIMESTAMP_EPOCH=$(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT)
+	TIMESTAMP_DATETIME=$(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT)
+	#
+	# Rundeck info.
+	#
+	RUNDECK_NODE=$(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT)
+	RUNDECK_VERSION=$(xmlstarlet sel -t -m "/system/rundeck" -v version -n $CURL_OUT)
+	RUNDECK_SERVERUUID=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
+	#
+	# Execution status and mode.
+	#
+	EXECUTIONS_MODE_ACTIVE=$(xmlstarlet sel -t -m "/system/executions" -v @active -n $CURL_OUT)
+	EXECUTIONS_EXECUTIONMODE=$(xmlstarlet sel -t -m "/system/executions" -v @executionMode -n $CURL_OUT)
+	#
+	# CPU statistics.
+	#
+	STATS_CPU_LOADAVERAGE=$(xmlstarlet sel -t -m "/system/stats/cpu" -v loadAverage -n $CURL_OUT)
+	STATS_CPU_LOADAVERAGE_UNIT=$(xmlstarlet sel -t -m "/system/stats/cpu/loadAverage" -v @unit -n $CURL_OUT)
+	STATS_CPU_CORES=$(xmlstarlet sel -t -m "/system/stats/cpu" -v processors -n $CURL_OUT)
+	#
+	# Memory statistics.
+	#
+	STATS_MEM_MAX=$(xmlstarlet sel -t -m "/system/stats/memory" -v max -n $CURL_OUT)
+	STATS_MEM_FREE=$(xmlstarlet sel -t -m "/system/stats/memory" -v free -n $CURL_OUT)
+	STATS_MEM_TOTAL=$(xmlstarlet sel -t -m "/system/stats/memory" -v total -n $CURL_OUT)
+	#
+	# Scheduler statistics.
+	#
+	STATS_SCHEDULER_RUNNING=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v running -n $CURL_OUT)
+	STATS_SCHEDULER_THREADPOOLSIZE=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT)
+	EOF
+}
+
+# Function to generate resourcexml format.
+generate_resourcexml() {
+	to_nodeattribute() {
+		local -r name=$1 value=${2:-}
+		printf -- "<attribute name=\"%s%s\" value=\"%s\"/>\n" "${PREFIX:-}" "$name" "$value"
+	}
+	server_uuid=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
+
+	cat <<-EOF
+	<project>
+	  <node name="$server_uuid" tags='cluster'>
+	$(to_nodeattribute "timestamp-epoch" $(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT))
+	$(to_nodeattribute "timestamp-datetime" $(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT))
+
+	$(to_nodeattribute "rundeck-node" $(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT))
+	$(to_nodeattribute "rundeck-version" $(xmlstarlet sel -t -m "/system/rundeck" -v version -n $CURL_OUT))
+	$(to_nodeattribute "rundeck-serveruuid" ${server_uuid})
+
+	$(to_nodeattribute "executions-mode-active" $(xmlstarlet sel -t -m "/system/executions" -v @active -n $CURL_OUT))
+	$(to_nodeattribute "executions-mode" $(xmlstarlet sel -t -m "/system/executions" -v @executionMode -n $CURL_OUT))
+
+	$(to_nodeattribute "cpu-loadaverage" $(xmlstarlet sel -t -m "/system/stats/cpu" -v loadAverage -n $CURL_OUT))
+	$(to_nodeattribute "cpu-loadaverage-unit" $(xmlstarlet sel -t -m "/system/stats/cpu/loadAverage" -v @unit -n $CURL_OUT))
+	$(to_nodeattribute "cpu-cores" $(xmlstarlet sel -t -m "/system/stats/cpu" -v processors -n $CURL_OUT))
+
+	$(to_nodeattribute "mem-max" $(xmlstarlet sel -t -m "/system/stats/memory" -v max -n $CURL_OUT))
+	$(to_nodeattribute "mem-free" $(xmlstarlet sel -t -m "/system/stats/memory" -v free -n $CURL_OUT))
+	$(to_nodeattribute "mem-total" $(xmlstarlet sel -t -m "/system/stats/memory" -v total -n $CURL_OUT))
+
+	$(to_nodeattribute "scheduler-running" $(xmlstarlet sel -t -m "/system/stats/scheduler" -v running -n $CURL_OUT))
+	$(to_nodeattribute "scheduler-threadpool-size" $(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT))
+	</node>
+	</project>
+	EOF
+}
+
+# Create a login session for API access.
 rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
-
+# Call the API function
 if ! http_code=$(rundeck_curl -w "%{http_code}" -H Accept:application/xml \
 	-X GET "${APIURL}" -o $CURL_OUT)
 then
 	rerun_die 3 "curl request failed (exit code: $?)"
 fi
+
 
 case ${http_code:-} in
    	20*) : ;; # successful 
@@ -36,101 +119,40 @@ case ${http_code:-} in
 	* )  rerun_die 3 "API error ${http_code:-}: POST ${APIURL}" ;;
 esac 
 
-# Check if the result is an xml file.
-# It might be valid xml containing api error information.
-xmlstarlet val -q $CURL_OUT
+# Output should contain valid XML.
+xmlstarlet val -q $CURL_OUT || { rerun_die "API result was invalid."; cat $CURL_OUT ; }
 
-# Fail the command if the api returned an error.
 
-result=$(mktemp -t "info.out.XXXXX")
-case $FORMAT in 
+# Process the user command.
+
+# Generate the specified format.
+case $FORMAT in
+	profile) 
+		generate_profile > $result 
+	;;
+	resourcexml) 
+		generate_resourcexml | xmlstarlet fo > $result
+	;;
 	xml)
-		xmlstarlet fo $CURL_OUT > $result
-	;;
-	profile)
-		cat >$result<<-EOF
-		#
-		# System info timestamp
-		#
-		TIMESTAMP_EPOCH=$(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT)
-		TIMESTAMP_DATETIME=$(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT)
-		#
-		# Rundeck info.
-		#
-		RUNDECK_NODE=$(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT)
-		RUNDECK_VERSION=$(xmlstarlet sel -t -m "/system/rundeck" -v version -n $CURL_OUT)
-		RUNDECK_SERVERUUID=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
-		#
-		# Execution status and mode.
-		#
-		EXECUTIONS_MODE_ACTIVE=$(xmlstarlet sel -t -m "/system/executions" -v @active -n $CURL_OUT)
-		EXECUTIONS_EXECUTIONMODE=$(xmlstarlet sel -t -m "/system/executions" -v @executionMode -n $CURL_OUT)
-		#
-		# CPU statistics.
-		#
-		STATS_CPU_LOADAVERAGE=$(xmlstarlet sel -t -m "/system/stats/cpu" -v loadAverage -n $CURL_OUT)
-		STATS_CPU_LOADAVERAGE_UNIT=$(xmlstarlet sel -t -m "/system/stats/cpu/loadAverage" -v @unit -n $CURL_OUT)
-		STATS_CPU_CORES=$(xmlstarlet sel -t -m "/system/stats/cpu" -v processors -n $CURL_OUT)
-		#
-		# Memory statistics.
-		#
-		STATS_MEM_MAX=$(xmlstarlet sel -t -m "/system/stats/memory" -v max -n $CURL_OUT)
-		STATS_MEM_FREE=$(xmlstarlet sel -t -m "/system/stats/memory" -v free -n $CURL_OUT)
-		STATS_MEM_TOTAL=$(xmlstarlet sel -t -m "/system/stats/memory" -v total -n $CURL_OUT)
-		#
-		# Scheduler statistics.
-		#
-		STATS_SCHEDULER_RUNNING=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v running -n $CURL_OUT)
-		STATS_SCHEDULER_THREADPOOLSIZE=$(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT)
-		EOF
-	;;
-	resourcexml)
-		to_nodeattribute() {
-			local -r name=$1 value=${2:-}
-			printf -- "<attribute name=\"%s%s\" value=\"%s\"/>\n" "${PREFIX:-}" "$name" "$value"
-		}
-		server_uuid=$(xmlstarlet sel -t -m "/system/rundeck" -v serverUUID -n $CURL_OUT)
-
-		cat >$result<<-EOF
-		<project>
-		  <node name="$server_uuid" tags='cluster'>
-		$(to_nodeattribute "timestamp-epoch" $(xmlstarlet sel -t -m "/system/timestamp" -v @epoch -n $CURL_OUT))
-		$(to_nodeattribute "timestamp-datetime" $(xmlstarlet sel -t -m "/system/timestamp" -v datetime -n $CURL_OUT))
-
-		$(to_nodeattribute "rundeck-node" $(xmlstarlet sel -t -m "/system/rundeck" -v node -n $CURL_OUT))
-		$(to_nodeattribute "rundeck-version" $(xmlstarlet sel -t -m "/system/rundeck" -v version -n $CURL_OUT))
-		$(to_nodeattribute "rundeck-serveruuid" ${server_uuid})
-
-		$(to_nodeattribute "executions-mode-active" $(xmlstarlet sel -t -m "/system/executions" -v @active -n $CURL_OUT))
-		$(to_nodeattribute "executions-mode" $(xmlstarlet sel -t -m "/system/executions" -v @executionMode -n $CURL_OUT))
-
-		$(to_nodeattribute "cpu-loadaverage" $(xmlstarlet sel -t -m "/system/stats/cpu" -v loadAverage -n $CURL_OUT))
-		$(to_nodeattribute "cpu-loadaverage-unit" $(xmlstarlet sel -t -m "/system/stats/cpu/loadAverage" -v @unit -n $CURL_OUT))
-		$(to_nodeattribute "cpu-cores" $(xmlstarlet sel -t -m "/system/stats/cpu" -v processors -n $CURL_OUT))
-
-		$(to_nodeattribute "mem-max" $(xmlstarlet sel -t -m "/system/stats/memory" -v max -n $CURL_OUT))
-		$(to_nodeattribute "mem-free" $(xmlstarlet sel -t -m "/system/stats/memory" -v free -n $CURL_OUT))
-		$(to_nodeattribute "mem-total" $(xmlstarlet sel -t -m "/system/stats/memory" -v total -n $CURL_OUT))
-
-		$(to_nodeattribute "scheduler-running" $(xmlstarlet sel -t -m "/system/stats/scheduler" -v running -n $CURL_OUT))
-		$(to_nodeattribute "scheduler-threadpool-size" $(xmlstarlet sel -t -m "/system/stats/scheduler" -v threadPoolSize -n $CURL_OUT))
-		</node>
-		</project>
-		EOF
+		cat $CURL_OUT        | xmlstarlet fo > $result
 	;;	
 	*) rerun_die "Unknown format: $FORMAT"
 	;;
 esac
 
+# Copy result to file, if one was specified.
 if [[ -n "$FILE" ]]
 then
 	[[ ! -d $(dirname "$FILE") ]] && mkdir -p $(dirname "$FILE")
-
 	cp $result "$FILE"
-else
+fi
+
+# Print results to the stdout, if the user specified.
+if [[ "${PRETTY_PRINT:-}" == "true" ]]
+then
 	cat $result
 fi
-rm -f $result
+
 
 # Done. Exit with last command exit status.
 exit $?
