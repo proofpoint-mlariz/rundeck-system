@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #/ command: rundeck-system:schedule-takeover: "Claim all scheduled jobs from another instance"
-#/ usage: rerun rundeck-system:schedule-takeover  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --apikey <$RUNDECK_APIKEY>] [ --uuid <>] [ --project <>] 
+#/ usage: rerun rundeck-system:schedule-takeover  --uuid <all> [ --project <>]  --url <${RUNDECK_URL:-}> [ --username <${RUNDECK_USER:-}>] [ --password <${RUNDECK_PASSWORD:-}>] [ --apikey <${RUNDECK_APIKEY:-}>] [ --timestamp-threshold <>] [ --timestamp <>] 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
-#/ option-variables: URL USERNAME PASSWORD APIKEY UUID PROJECT
+#/ option-variables: UUID PROJECT URL USERNAME PASSWORD APIKEY TIMESTAMP_THRESHOLD TIMESTAMP
 
 . $RERUN_MODULE_DIR/lib/functions.sh schedule-takeover || { 
   echo >&2 "Failed loading function library." ; exit 1 ; 
@@ -12,6 +12,23 @@
 set -o errexit -o nounset -o pipefail
 
 rerun_options_parse "$@"
+
+
+if [[ -n ${TIMESTAMP_THRESHOLD} && -n ${TIMESTAMP} ]]
+then
+  currenttime=$(date +%s)
+
+  # Hack: timestamp-epoch is an ms unit. milliseconds have 14 chars
+  (( ${#TIMESTAMP} == 14 )) && TIMESTAMP=$(($TIMESTAMP/1000)); # convert to seconds
+
+  elapsed=$(( $currenttime - $TIMESTAMP ))
+
+  if (( $elapsed < $TIMESTAMP_THRESHOLD ))
+  then
+      rerun_log info "Skipping takeover: Threshold not exceeded. $elapsed secs elapsed between current time and timestamp. "
+      exit 0
+  fi
+fi
 
 CURL_OUT=$(mktemp -t "curl.out.XXXXX")
 PUT_CONTENT=$(mktemp -t "put.content.XXXXX")
