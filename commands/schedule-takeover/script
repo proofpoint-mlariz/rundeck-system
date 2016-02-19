@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 #/ command: rundeck-system:schedule-takeover: "Claim all scheduled jobs from another instance"
-#/ usage: rerun rundeck-system:schedule-takeover  --uuid <all> [ --project <>]  --url <${RUNDECK_URL:-}> [ --username <${RUNDECK_USER:-}>] [ --password <${RUNDECK_PASSWORD:-}>] [ --apikey <${RUNDECK_APIKEY:-}>] [ --timestamp-threshold <>] [ --timestamp <>] 
+#/ usage: rerun rundeck-system:schedule-takeover  --uuid <all> [ --project <>] [ --timestamp-threshold <>] [ --timestamp <>]  --url <${RUNDECK_URL:-}> [ --username <${RUNDECK_USER:-}>] [ --password <${RUNDECK_PASSWORD:-}>] [ --apikey <${RUNDECK_APIKEY:-}>] [ --exclude-project <>] 
 #/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
-#/ option-variables: UUID PROJECT URL USERNAME PASSWORD APIKEY TIMESTAMP_THRESHOLD TIMESTAMP
+#/ option-variables: UUID PROJECT TIMESTAMP_THRESHOLD TIMESTAMP URL USERNAME PASSWORD APIKEY EXCLUDE_PROJECT
 
 . $RERUN_MODULE_DIR/lib/functions.sh schedule-takeover || { 
   echo >&2 "Failed loading function library." ; exit 1 ; 
@@ -13,13 +13,35 @@ set -o errexit -o nounset -o pipefail
 
 rerun_options_parse "$@"
 
+if [[ -n "${PROJECT:-}" ]]
+then
+  PROJECTS=( ${PROJECT//,/ } )
+  if (( ${#PROJECTS[*]} > 1 ))
+  then
+    rerun_log info "Processing ${#PROJECTS[*]} projects: ${PROJECTS[*]} ..."
+    [[ -n "${USERNAME:-}" ]]  && clopts=( ${clopts[*]:-} --username $USERNAME)
+    [[ -n "${PASSWORD:-}" ]]  && clopts=( ${clopts[*]:-} --password $PASSWORD)
+    [[ -n "${APIKEY:-}" ]]    && clopts=( ${clopts[*]:-} --apikey $APIKEY)
+    [[ -n "${TIMESTAMP:-}" ]] && clopts=( ${clopts[*]:-} --timestamp $TIMESTAMP)
+    [[ -n "${TIMESTAMP_THRESHOLD:-}" ]] && clopts=( ${clopts[*]:-} --timestamp-threshold $TIMESTAMP_THRESHOLD)
+
+    for p in ${PROJECTS[*]}
+    do 
+      [[ $p =~ $EXCLUDE_PROJECT ]] && rerun_log warn "Skipping excluded project: $p"
+
+      rerun_log info " - $p"
+      rerun rundeck-system:schedule-takeover --project $p --url $URL --uuid $UUID ${clopts[*]}
+    done
+    exit 0
+  fi
+fi
 
 if [[ -n ${TIMESTAMP_THRESHOLD} && -n ${TIMESTAMP} ]]
 then
   currenttime=$(date +%s)
 
-  # Hack: timestamp-epoch is an ms unit. milliseconds have 14 chars
-  (( ${#TIMESTAMP} == 14 )) && TIMESTAMP=$(($TIMESTAMP/1000)); # convert to seconds
+  # Hack: timestamp-epoch is an ms unit. milliseconds have 3 more chars
+  (( ${#TIMESTAMP} == 13 )) && TIMESTAMP=$(($TIMESTAMP/1000)); # convert to seconds
 
   elapsed=$(( $currenttime - $TIMESTAMP ))
 
@@ -27,6 +49,8 @@ then
   then
       rerun_log info "Skipping takeover: Threshold not exceeded. $elapsed secs elapsed between current time and timestamp. "
       exit 0
+  else
+    rerun_log warn "Threshold exceeded by $elapsed seconds. Can take over schedules."
   fi
 fi
 
@@ -37,9 +61,9 @@ trap 'rm $CURL_OUT $PUT_CONTENT' EXIT; # cleanup on exit
 cat > $PUT_CONTENT <<EOF
 <takeoverSchedule>
 $(if [[ ${UUID} == all ]]
-  then
-	echo "  <server all=\"true\"/>"
-  else
+then
+	  echo "  <server all=\"true\"/>"
+else
   	echo "  <server uuid=\"$UUID\"/>"
 fi)
 $([[ -n "$PROJECT" ]] && echo "  <project name=\"$PROJECT\"/>")
@@ -86,6 +110,8 @@ then
     failed_ids=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed/job" -o " - " -v @permalink -n $CURL_OUT)
     rerun_die 4 "Not all jobs taken over: $failed out of $total. jobs: $failed_ids"
 fi
+
+rerun_log info "Done."
 
 # Done. Exit with last command exit status.
 exit $?

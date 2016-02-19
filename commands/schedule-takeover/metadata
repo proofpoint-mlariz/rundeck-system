@@ -3,4 +3,4 @@
 # Sat Dec 19 10:24:00 PST 2015
 NAME=schedule-takeover
 DESCRIPTION="Claim all scheduled jobs from another instance"
-OPTIONS="uuid project timestamp-threshold timestamp url username password apikey"
+OPTIONS="uuid project exclude-project timestamp-threshold timestamp url username password apikey"
