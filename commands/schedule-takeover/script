@@ -9,26 +9,55 @@
   echo >&2 "Failed loading function library." ; exit 1 ; 
 }
 
+projects_list() {
+  local curl_out=$(mktemp -t curl.out.project_list.XXXXXXX)
+  local http_code
+  if ! http_code=$(rundeck_curl -w "%{http_code}" \
+      -X GET ${URL}/api/1/projects -o $curl_out)
+  then
+    rerun_die 3 "curl request failed (exit code: $?)"
+  fi
+  case ${http_code:-} in
+    20*) : ;; # successful
+    * ) rerun_die 3 "API error ${http_code:-}: ${URL}/api/1/projects. Reason: $(xmlstarlet sel -t -m //error -v message $curl_out)" ;;
+  esac
+  xmlstarlet sel -t -m '//project' -v name -n $curl_out
+  rm $curl_out
+}
+
+
 set -o errexit -o nounset -o pipefail
 
 rerun_options_parse "$@"
 
+# Save the login credentials for subsequent API calls.
+[[ -n "${USERNAME:-}" ]]  && clopts=( ${clopts[*]:-} --username $USERNAME)
+[[ -n "${PASSWORD:-}" ]]  && clopts=( ${clopts[*]:-} --password $PASSWORD)
+[[ -n "${APIKEY:-}" ]]    && clopts=( ${clopts[*]:-} --apikey $APIKEY)
+[[ -n "${TIMESTAMP:-}" ]] && clopts=( ${clopts[*]:-} --timestamp $TIMESTAMP)
+[[ -n "${TIMESTAMP_THRESHOLD:-}" ]] && clopts=( ${clopts[*]:-} --timestamp-threshold $TIMESTAMP_THRESHOLD)
+
+
+rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
+
 if [[ -n "${PROJECT:-}" ]]
 then
-  PROJECTS=( ${PROJECT//,/ } )
+  if [[ "$PROJECT" == "*" ]]
+  then
+    PROJECTS=( $(projects_list) )
+  else
+    PROJECTS=( ${PROJECT//,/ } )
+  fi
+
   if (( ${#PROJECTS[*]} > 1 ))
   then
     rerun_log info "Processing ${#PROJECTS[*]} projects: ${PROJECTS[*]} ..."
-    [[ -n "${USERNAME:-}" ]]  && clopts=( ${clopts[*]:-} --username $USERNAME)
-    [[ -n "${PASSWORD:-}" ]]  && clopts=( ${clopts[*]:-} --password $PASSWORD)
-    [[ -n "${APIKEY:-}" ]]    && clopts=( ${clopts[*]:-} --apikey $APIKEY)
-    [[ -n "${TIMESTAMP:-}" ]] && clopts=( ${clopts[*]:-} --timestamp $TIMESTAMP)
-    [[ -n "${TIMESTAMP_THRESHOLD:-}" ]] && clopts=( ${clopts[*]:-} --timestamp-threshold $TIMESTAMP_THRESHOLD)
-
     for p in ${PROJECTS[*]}
     do 
-      [[ $p =~ $EXCLUDE_PROJECT ]] && rerun_log warn "Skipping excluded project: $p"
-
+      [[ $p =~ $EXCLUDE_PROJECT ]] && {
+        rerun_log warn "Skipping excluded project: $p"
+        continue
+      }
       rerun_log info " - $p"
       rerun rundeck-system:schedule-takeover --project $p --url $URL --uuid $UUID ${clopts[*]}
     done
@@ -36,7 +65,7 @@ then
   fi
 fi
 
-if [[ -n ${TIMESTAMP_THRESHOLD} && -n ${TIMESTAMP} ]]
+if [[ -n "${TIMESTAMP_THRESHOLD:-}" && -n "${TIMESTAMP:-}" ]]
 then
   currenttime=$(date +%s)
 
@@ -73,7 +102,6 @@ EOF
 
 APIURL="${URL}/api/14/scheduler/takeover"
 
-rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
 
 if ! http_code=$(rundeck_curl -w "%{http_code}" \
 	-H Accept:application/xml -H Content-Type:application/xml  \
@@ -99,19 +127,19 @@ failed=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed" -v @count $CURL_OU
 # Print out the job IDs for the successfully taken over.
 if (( "$successful" > 0 ))
 then
-	rerun_log info "successful: $successful "
-    xmlstarlet sel -t -m "/takeoverSchedule/jobs/successful/job" -o " - " -v @permalink -n $CURL_OUT
+	rerun_log info "successfully took over $successful jobs"
+  xmlstarlet sel -t -m "/takeoverSchedule/jobs/successful/job" -o " - " -v @permalink -n $CURL_OUT
 fi
 
 # Bail out but print the job IDs for the failed ones.
 if (( "$failed" > 0 ))
 then
-	rerun_log warn "failed: $failed"
-    failed_ids=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed/job" -o " - " -v @permalink -n $CURL_OUT)
-    rerun_die 4 "Not all jobs taken over: $failed out of $total. jobs: $failed_ids"
+	rerun_log warn "failed to take over $failed jobs"
+  failed_ids=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed/job" -o " - " -v @permalink -n $CURL_OUT)
+  rerun_die 4 "Not all jobs taken over: $failed out of $total. jobs: $failed_ids"
 fi
 
-rerun_log info "Done."
+
 
 # Done. Exit with last command exit status.
 exit $?
