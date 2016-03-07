@@ -44,6 +44,7 @@ if [[ -n "${PROJECT:-}" ]]
 then
   if [[ "$PROJECT" == "*" ]]
   then
+    rerun_log info "Looking up all projects ..."
     PROJECTS=( $(projects_list) )
   else
     PROJECTS=( ${PROJECT//,/ } )
@@ -51,14 +52,14 @@ then
 
   if (( ${#PROJECTS[*]} > 1 ))
   then
-    rerun_log info "Processing ${#PROJECTS[*]} projects: ${PROJECTS[*]} ..."
+    rerun_log info "Processing ${#PROJECTS[*]} projects: [${PROJECTS[*]}] ..."
     for p in ${PROJECTS[*]}
     do 
       [[ $p =~ $EXCLUDE_PROJECT ]] && {
         rerun_log warn "Skipping excluded project: $p"
         continue
       }
-      rerun_log info " - $p"
+      rerun_log info "Project: $p"
       rerun rundeck-system:schedule-takeover --project $p --url $URL --uuid $UUID ${clopts[*]}
     done
     exit 0
@@ -102,7 +103,6 @@ EOF
 
 APIURL="${URL}/api/14/scheduler/takeover"
 
-
 if ! http_code=$(rundeck_curl -w "%{http_code}" \
 	-H Accept:application/xml -H Content-Type:application/xml  \
 	--data-binary @$PUT_CONTENT \
@@ -117,12 +117,17 @@ case ${http_code:-} in
 	* )  rerun_die 3 "API error ${http_code:-}: PUT ${APIURL}" ;;
 esac 
 
+echo "Generating summary..."
+
 
 # Success/failure counters about schedule takeovers.
 declare -i successful failed total
 total=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs" -v @total $CURL_OUT)
 successful=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/successful" -v @count $CURL_OUT)
 failed=$(xmlstarlet sel -t -m "/takeoverSchedule/jobs/failed" -v @count $CURL_OUT)
+
+rerun_log info "Jobs total: $total"
+rerun_log info "$(xmlstarlet sel -t -m "/takeoverSchedule/server" -o "- " -v @uuid $CURL_OUT)"
 
 # Print out the job IDs for the successfully taken over.
 if (( "$successful" > 0 ))
