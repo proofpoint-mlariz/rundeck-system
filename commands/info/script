@@ -25,7 +25,7 @@ CURL_OUT=$(mktemp -t "curl.out.XXXXX")
 result=$(mktemp -t "info.out.XXXXX")
 
 # Cleanup tempfiles on exit
-#trap 'rm $CURL_OUT $result' EXIT; 
+trap 'rm $CURL_OUT $result' EXIT; 
 
 
 # Function to generate profile format.
